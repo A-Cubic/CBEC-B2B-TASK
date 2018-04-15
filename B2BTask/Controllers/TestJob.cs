@@ -15,9 +15,9 @@ namespace core测试.Controllers
         [Invoke(Begin = "2016-11-29 22:10", Interval = 1000 * 10 , SkipWhileExecuting = true)]
         public void Run()
         {
-            string ss = "select now() as now";
-            DatabaseOperation.TYPE = new DBManager();
-            DataTable dt = DatabaseOperation.ExecuteSelectDS(ss, "1").Tables[0];
+            //string ss = "select now() as now";
+            //DatabaseOperation.TYPE = new DBManager();
+            //DataTable dt = DatabaseOperation.ExecuteSelectDS(ss, "1").Tables[0];
             //Job要执行的逻辑代码
 
             //LogHelper.Info("Start crawling");

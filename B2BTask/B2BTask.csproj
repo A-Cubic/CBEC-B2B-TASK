@@ -22,9 +22,6 @@
     <Reference Include="MrDatabase">
       <HintPath>bin\Debug\netcoreapp2.0\MrDatabase.dll</HintPath>
     </Reference>
-    <Reference Include="MrDatabase">
-      <HintPath>bin\MrDatabase.dll</HintPath>
-    </Reference>
   </ItemGroup>
 
 </Project>
