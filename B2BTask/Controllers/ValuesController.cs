@@ -35,7 +35,7 @@ namespace core测试.Controllers
                 
 
                 MySqlConnection my = new MySqlConnection();
-                my.ConnectionString = "Database='erp';Data Source='118.190.125.175';User Id='root';Password='13161111';Character Set=utf8;port=13306;";
+                my.ConnectionString = "";
                 MySqlCommand msqlCommand = new MySqlCommand();
                 msqlCommand.Connection = my;
                 try
