@@ -10,9 +10,6 @@ namespace core测试.Controllers
     {
         private DBType dbt;
         private string str = "";
-        //private static string str4 = "Database='xiaoman_s';Data Source='112.126.92.32';User Id='root';Password='H12#ds@15hSD';Character Set=utf8;";
-        //private static string str9 = "Database='xiaoman_j';Data Source='112.126.92.32';User Id='root';Password='H12#ds@15hSD';Character Set=utf8;";
-        //private static string str9 = "Database='xiaoman_j';Data Source='112.126.92.32';User Id='root';Password='H12#ds@15hSD';Character Set=utf8;";
         public DBManager()
         {
             this.dbt = DBType.Mysql;
