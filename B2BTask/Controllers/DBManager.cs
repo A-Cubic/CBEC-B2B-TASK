@@ -9,7 +9,7 @@ namespace core测试.Controllers
     public class DBManager : IType
     {
         private DBType dbt;
-        private string str = "";
+        private string str = "1";
         public DBManager()
         {
             this.dbt = DBType.Mysql;

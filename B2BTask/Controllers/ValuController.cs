@@ -33,32 +33,6 @@ namespace core测试.Controllers
             if (id==999)
             {
                 
-
-                MySqlConnection my = new MySqlConnection();
-                my.ConnectionString = "";
-                MySqlCommand msqlCommand = new MySqlCommand();
-                msqlCommand.Connection = my;
-                try
-                {
-                    //define the command text  
-                    msqlCommand.CommandText = "select now() as now";
-                    my.Open();
-                    MySqlDataReader msqlReader = msqlCommand.ExecuteReader();
-                    while (msqlReader.Read())
-                    {
-                        return msqlReader.GetString(msqlReader.GetOrdinal("now"));
-                    }
-
-                    return "error";
-                }
-                catch (Exception)
-                {
-
-                }
-                finally
-                {
-                    my.Close();
-                }
                 
             }
             return "value";
