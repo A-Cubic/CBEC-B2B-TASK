@@ -23,7 +23,7 @@
 
   <ItemGroup>
     <Reference Include="MrDatabase">
-      <HintPath>bin\Debug\netcoreapp2.0\MrDatabase.dll</HintPath>
+      <HintPath>lib\MrDatabase.dll</HintPath>
     </Reference>
   </ItemGroup>
 

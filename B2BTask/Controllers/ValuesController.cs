@@ -4,8 +4,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using MySql.Data.MySqlClient;
-using Com.Portsoft.Framework.Database;
 using System.Data;
+using Com.ACBC.Framework.Database;
 
 namespace core测试.Controllers
 {
@@ -26,8 +26,8 @@ namespace core测试.Controllers
             if (id == 99)
             {
                 string ss = "select now() as now";
-                DatabaseOperation.TYPE = new DBManager();
-                DataTable dt = DatabaseOperation.ExecuteSelectDS(ss, "1").Tables[0];
+                DatabaseOperationWeb.TYPE = new B2BDBManager();
+                DataTable dt = DatabaseOperationWeb.ExecuteSelectDS(ss, "1").Tables[0];
                 return dt.Rows[0][0].ToString();
             }
             if (id==999)
