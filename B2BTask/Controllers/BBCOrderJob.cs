@@ -273,6 +273,7 @@ namespace core测试.Controllers
             }
             #endregion
 
+            DatabaseOperationWeb.TYPE = b2b;
             #region 处理因仓库分单
             List<OrderItem> newOrderItemList = new List<OrderItem>();
             foreach (var orderItem in OrderItemList)
@@ -286,7 +287,7 @@ namespace core测试.Controllers
                 Dictionary<int, List<OrderGoodsItem>> myDictionary = new Dictionary<int, List<OrderGoodsItem>>();
                 foreach (OrderGoodsItem orderGoodsItem in orderItem.OrderGoods)
                 {
-                    string wsql = "select d.platformId,u.id as userId,u.platformCost,u.platformCostType,u.priceType," +
+                    string wsql = "select d.platformId,u.id as userId,u.platformCost,u.platformCostType,u.priceType,u.agentCost,u.usertype,u.ofAgent," +
                                   "d.pprice,d.profitPlatform,d.profitAgent,d.profitDealer,d.profitOther1," +
                                   "d.profitOther1Name,d.profitOther2,d.profitOther2Name,d.profitOther3," +
                                   "d.profitOther3Name,w.id as goodsWarehouseId,w.wid,w.wcode,w.goodsnum,w.inprice,bw.taxation,bw.taxation2," +
@@ -408,7 +409,8 @@ namespace core测试.Controllers
             #endregion
 
             #region 价格分拆
-
+            string userSql2 = "select * from t_user_list";
+            DataTable userDT2 = DatabaseOperationWeb.ExecuteSelectDS(userSql2, "TABLE").Tables[0];
             ArrayList al = new ArrayList();
             ArrayList goodsNumAl = new ArrayList();
             foreach (var orderItem in newOrderItemList)
@@ -425,7 +427,45 @@ namespace core测试.Controllers
                 orderItem.warehouseId = orderItem.OrderGoods[0].dr["wid"].ToString();
                 orderItem.warehouseCode = orderItem.OrderGoods[0].dr["wcode"].ToString();
                 orderItem.supplier = orderItem.OrderGoods[0].dr["suppliercode"].ToString();
+                orderItem.purchaseId = orderItem.OrderGoods[0].dr["userId"].ToString();
+
                 double fr = Math.Round(orderItem.freight / tradeAmount, 4);
+
+                //处理供货代理提点
+                double supplierAgentCost = 0;
+                DataRow[] drs = userDT2.Select("userCode = '" + orderItem.supplier + "'");
+                if (drs.Length > 0)
+                {
+                    if (drs[0]["ofAgent"].ToString() != "")
+                    {
+                        orderItem.supplierAgentCode = drs[0]["ofAgent"].ToString();
+                        double.TryParse(drs[0]["agentCost"].ToString(), out supplierAgentCost);
+                    }
+                }
+
+                //处理采购代理提点
+                double purchaseAgentCost = 0;
+                if (orderItem.OrderGoods[0].dr["ofAgent"].ToString() != "")
+                {
+                    //分销商需要看分销代理有没有采购代理。
+                    if (orderItem.OrderGoods[0].dr["usertype"].ToString() == "4")
+                    {
+                        DataRow[] drs1 = userDT2.Select("userCode = '" + orderItem.OrderGoods[0].dr["ofAgent"].ToString() + "'");
+                        if (drs1.Length > 0)
+                        {
+                            if (drs1[0]["ofAgent"].ToString() != "")
+                            {
+                                orderItem.purchaseAgentCode = drs1[0]["ofAgent"].ToString();
+                                double.TryParse(drs1[0]["agentCost"].ToString(), out purchaseAgentCost);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        orderItem.purchaseAgentCode = orderItem.OrderGoods[0].dr["ofAgent"].ToString();
+                        double.TryParse(orderItem.OrderGoods[0].dr["agentCost"].ToString(), out purchaseAgentCost);
+                    }
+                }
                 for (int i = 0; i < orderItem.OrderGoods.Count; i++)
                 {
                     OrderGoodsItem orderGoodsItem = orderItem.OrderGoods[i];
@@ -448,7 +488,7 @@ namespace core测试.Controllers
                     orderGoodsItem.purchasePrice = Math.Round(Convert.ToDouble(orderGoodsItem.dr["pprice"]), 2);
                     orderGoodsItem.suppliercode = orderGoodsItem.dr["suppliercode"].ToString();
                     orderGoodsItem.slt = orderGoodsItem.dr["slt"].ToString();
-
+                    orderGoodsItem.totalPrice = orderGoodsItem.skuUnitPrice * orderGoodsItem.quantity;
                     string goodsWarehouseId = orderGoodsItem.dr["goodsWarehouseId"].ToString();//库存id
                                                                                                //处理税
                     double taxation = 0;
@@ -529,14 +569,64 @@ namespace core测试.Controllers
                             }
                         }
                     }
+
+
+                    //处理供货代理提点
+                    orderGoodsItem.supplierAgentPrice = 0;
+                    if (supplierAgentCost > 0)
+                    {
+                        //按供货价计算
+                        orderGoodsItem.supplierAgentPrice = Math.Round(orderGoodsItem.supplyPrice * orderGoodsItem.quantity * supplierAgentCost / 100, 2);
+                        orderGoodsItem.supplierAgentCode = orderItem.supplierAgentCode;
+                        orderGoodsItem.supplierAgentPrice = Math.Round(orderGoodsItem.supplierAgentPrice, 2);
+                    }
+                    //处理采购代理提点
+                    orderGoodsItem.purchaseAgentPrice = 0;
+                    if (purchaseAgentCost > 0)
+                    {
+                        if (orderGoodsItem.dr["platformCostType"].ToString() == "1")//进价计算
+                        {
+                            orderGoodsItem.purchaseAgentPrice = orderGoodsItem.supplyPrice * orderGoodsItem.quantity * purchaseAgentCost / (100 - platformCost);
+                        }
+                        else if (orderGoodsItem.dr["platformCostType"].ToString() == "2")//售价计算
+                        {
+                            if (orderGoodsItem.dr["priceType"].ToString() == "1")//按订单售价计算
+                            {
+                                orderGoodsItem.purchaseAgentPrice = orderGoodsItem.totalPrice * purchaseAgentCost / 100;
+                            }
+                            else if (orderGoodsItem.dr["priceType"].ToString() == "2")//按供货价计算
+                            {
+                                orderGoodsItem.purchaseAgentPrice = orderGoodsItem.purchasePrice * orderGoodsItem.quantity * purchaseAgentCost / 100;
+                            }
+                        }
+                        orderGoodsItem.purchaseAgentPrice = Math.Round(orderGoodsItem.purchaseAgentPrice, 2);
+                    }
+
+
                     orderGoodsItem.platformPrice = Math.Round(orderGoodsItem.platformPrice, 2);
-                    //处理利润
-                    //利润为供货价-进价-提点-运费分成-税
-                    double profit = orderGoodsItem.purchasePrice * orderGoodsItem.quantity
+                    //判断误差，误差=供货价-进价-平台提点-供货代理提点-采购代理提点-运费分成-税
+                    double deviation = orderGoodsItem.purchasePrice * orderGoodsItem.quantity
                         - orderGoodsItem.supplyPrice * orderGoodsItem.quantity
                         - orderGoodsItem.platformPrice
+                        - orderGoodsItem.supplierAgentPrice
+                        - orderGoodsItem.purchaseAgentPrice
                         - orderGoodsItem.waybillPrice
                         - orderGoodsItem.tax;
+                    //如果有误差了，就从平台提点扣除
+                    if (deviation != 0)
+                    {
+                        if (orderGoodsItem.platformPrice + deviation > 0)
+                        {
+                            orderGoodsItem.platformPrice = orderGoodsItem.platformPrice + deviation;
+                        }
+                        else
+                        {
+                           // msg.msg = "订单" + orderItem.merchantOrderId + "价格有误差，请查对！";
+                        }
+                    }
+                    //处理利润
+                    //利润=售价-供货价
+                    double profit = (orderGoodsItem.skuUnitPrice - orderGoodsItem.purchasePrice) * orderGoodsItem.quantity;
                     double profitAgent = 0, profitDealer = 0, profitOther1 = 0, profitOther2 = 0, profitOther3 = 0;
                     double.TryParse(orderGoodsItem.dr["profitAgent"].ToString(), out profitAgent);
                     double.TryParse(orderGoodsItem.dr["profitDealer"].ToString(), out profitDealer);
@@ -554,11 +644,13 @@ namespace core测试.Controllers
                     orderGoodsItem.other1Name = orderGoodsItem.dr["profitOther1Name"].ToString();
                     orderGoodsItem.other2Name = orderGoodsItem.dr["profitOther2Name"].ToString();
                     orderGoodsItem.other3Name = orderGoodsItem.dr["profitOther3Name"].ToString();
+
                     string sqlgoods = "insert into t_order_goods(merchantOrderId,barCode,slt,skuUnitPrice," +
                                   "quantity,skuBillName,batchNo,goodsName," +
                                   "api,fqSkuID,sendType,status," +
                                   "suppliercode,supplyPrice,purchasePrice,waybill," +
                                   "waybillPrice,tax,platformPrice,profitPlatform," +
+                                  "supplierAgentPrice,supplierAgentCode,purchaseAgentPrice,purchaseAgentCode," +
                                   "profitAgent,profitDealer,profitOther1,other1Name," +
                                   "profitOther2,other2Name,profitOther3,other3Name) " +
                                   "values('" + orderItem.merchantOrderId + "','" + orderGoodsItem.barCode + "','" + orderGoodsItem.slt + "','" + orderGoodsItem.skuUnitPrice + "'" +
@@ -566,6 +658,7 @@ namespace core测试.Controllers
                                   ",'','','','0'" +
                                   ",'" + orderGoodsItem.suppliercode + "','" + orderGoodsItem.supplyPrice + "','" + orderGoodsItem.purchasePrice + "',''" +
                                   ",'" + orderGoodsItem.waybillPrice + "','" + orderGoodsItem.tax + "','" + orderGoodsItem.platformPrice + "','" + orderGoodsItem.profitPlatform + "'" +
+                                  ",'" + orderGoodsItem.supplierAgentPrice + "','" + orderGoodsItem.supplierAgentCode + "','" + orderGoodsItem.purchaseAgentPrice + "','" + orderGoodsItem.purchaseAgentCode + "'" +
                                   ",'" + orderGoodsItem.profitAgent + "','" + orderGoodsItem.profitDealer + "','" + orderGoodsItem.profitOther1 + "','" + orderGoodsItem.other1Name + "'" +
                                   ",'" + orderGoodsItem.profitOther2 + "','" + orderGoodsItem.other2Name + "','" + orderGoodsItem.profitOther3 + "','" + orderGoodsItem.other3Name + "'" +
                                   ")";
@@ -580,25 +673,25 @@ namespace core测试.Controllers
                 }
                 string sqlorder = "insert into t_order_list(warehouseId,warehouseCode,customerCode,actionType," +
                     "orderType,serviceType,parentOrderId,merchantOrderId," +
-                    "tradeTime,consigneeCode," +
+                    "payType,payNo,tradeTime,consigneeCode," +
                     "tradeAmount,goodsTotalAmount,consigneeName,consigneeMobile," +
                     "addrCountry,addrProvince,addrCity,addrDistrict," +
                     "addrDetail,zipCode,idType,idNumber," +
                     "idFountImgUrl,idBackImgUrl,status,purchaserCode," +
                     "purchaserId,distributionCode,apitype,waybillno," +
-                    "expressId,inputTime,fqID,payType,payNo," +
+                    "expressId,inputTime,fqID,supplierAgentCode,purchaseAgentCode," +
                     "operate_status,sendapi,platformId,consignorName," +
                     "consignorMobile,consignorAddr,batchid,outNo,waybillOutNo," +
                     "accountsStatus,accountsNo,prePayId,ifPrint,printNo) " +
                     "values('" + orderItem.warehouseId + "','" + orderItem.warehouseCode + "','" + orderItem.supplier + "',''" +
                     ",'','','" + orderItem.parentOrderId + "','" + orderItem.merchantOrderId + "'" +
-                    ",'" + orderItem.tradeTime + "','" + orderItem.consigneeCode + "'" +
+                    ",'" + orderItem.payType + "','" + orderItem.payNo + "','" + orderItem.tradeTime + "','" + orderItem.consigneeCode + "'" +
                     "," + orderItem.tradeAmount + ",'" + orderItem.tradeAmount + "','" + orderItem.consigneeName + "','" + orderItem.consigneeMobile + "'" +
                     ",'" + orderItem.addrCountry + "','" + orderItem.addrProvince + "','" + orderItem.addrCity + "','" + orderItem.addrDistrict + "'" +
                     ",'" + orderItem.addrDetail + "','','1','" + orderItem.idNumber + "'" +
                     ",'','','1','" + orderItem.purchase + "'" +
                     ",'" + orderItem.purchaseId + "','','',''" +
-                    ",'',now(),'','" + orderItem.payType + "','" + orderItem.payNo + "'" +
+                    ",'',now(),'','" + orderItem.supplierAgentCode + "','" + orderItem.purchaseAgentCode + "'" +
                     ",'0','','" + orderItem.platformId + "','" + orderItem.consignorName + "'" +
                     ",'" + orderItem.consignorMobile + "','" + orderItem.consignorAddr + "','','',''" +
                     ",'0','','','0','') ";
@@ -659,7 +752,7 @@ namespace core测试.Controllers
             DatabaseOperationWeb.ExecuteDML(sql);
             DatabaseOperationWeb.TYPE = itype;
         }
-
+         
         #region 旧代码
         private string initBBC(DataTable dt)
         {
@@ -1163,6 +1256,8 @@ namespace core测试.Controllers
         public string purchase;//渠道商
         public string purchaseId;//渠道商id
         public string supplier;//供应商
+        public string supplierAgentCode;//供应代理usercode
+        public string purchaseAgentCode;//采购代理usercode
         public string consigneeCode;//收货人的账号
         public string consigneeName;//收货人
         public string tradeAmount;//订单总金额
@@ -1190,8 +1285,7 @@ namespace core测试.Controllers
         public List<OrderGoodsItem> OrderGoods;//商品列表
     }
     public class OrderGoodsItem
-    {
-        public string id;
+    { public string id;
         public string slt;//商品图片
         public string barCode;//条码
         public double skuUnitPrice;//销售单价
@@ -1204,6 +1298,10 @@ namespace core测试.Controllers
         public double tax;//税
         public double waybillPrice;//运费
         public double platformPrice;//平台提点
+        public double supplierAgentPrice;//供货代理提点
+        public string supplierAgentCode;//供应代理usercode
+        public double purchaseAgentPrice;//采购代理提点
+        public string purchaseAgentCode;//采购代理usercode
         public double profitPlatform;//平台利润
         public double profitAgent;//代理利润
         public double profitDealer;//分销利润
