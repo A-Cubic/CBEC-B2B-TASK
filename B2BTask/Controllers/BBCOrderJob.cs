@@ -829,7 +829,7 @@ namespace core测试.Controllers
                 OrderBean ob = new OrderBean("", "", dt.Rows[i]["ordersn"].ToString(), dt.Rows[i]["ordersn"].ToString(),
                     GetTime(dt.Rows[i]["createtime"].ToString()).ToString("yyyy-MM-dd HH:mm:ss"), Convert.ToDouble(dt.Rows[i]["price"].ToString()),
                    Convert.ToDouble(dt.Rows[i]["goodsprice"].ToString()), name, tel, "中国", pro, city, area, addr, zipcode, "1", cardnum, "", "",
-                   status, purchaserCode, distributionCode, "BBC", "", "BBC", null);
+                   status, purchaserCode, distributionCode, "1", "", "BBC", null);
                 string sql1 = "select g.productsn,g.title,g.costprice,o.* " +
                               "from ims_ewei_shop_order_goods o ,ims_ewei_shop_goods g " +
                               "where o.goodsid =g.id and  o.orderid = " + dt.Rows[i]["id"].ToString();
