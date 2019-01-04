@@ -23,7 +23,7 @@ namespace core测试.Controllers
                 "from ims_ewei_shop_order o ,(select min(id) id,openid from ims_ewei_shop_member group by openid) m  " +
                 "where o.openid = m.openid " +
                 "and  (o.virtual_info is null or (o.virtual_info !=o.`status` and  o.virtual_info !='-1')) " +
-                "and o.`status` >0 ";
+                "and o.`status` >0 and o.id > 333";
             DataTable dt = DatabaseOperationWeb.ExecuteSelectDS(sql, "ims_ewei_shop_order").Tables[0];
             if (dt.Rows.Count > 0)
             {
@@ -67,17 +67,30 @@ namespace core测试.Controllers
                         {
                             OrderItem orderItem = new OrderItem();
                             purchaserCode = userDt.Rows[0]["usercode"].ToString();
-                            if (dt.Rows[i]["agentid"].ToString() != "0")//判断是否有分销商
+                            //if (dt.Rows[i]["agentid"].ToString() != "0")//判断是否有分销商
+                            //{
+                            //    string userSql1 = "select usercode from t_user_list where agentid = '" + dt.Rows[i]["agentid"].ToString() + "'";
+                            //    DataTable userDt1 = DatabaseOperationWeb.ExecuteSelectDS(userSql1, "ims_ewei_shop_order").Tables[0];
+                            //    if (userDt1.Rows.Count > 0)
+                            //    {
+                            //        distributionCode = userDt.Rows[0][0].ToString();
+                            //    }
+                            //    else
+                            //    {
+                            //        //没有对应分销商，先不处理
+                            //    }
+                            //}
+                            if (dt.Rows[i]["openid"].ToString().IndexOf("sns_wa_")>=0)//判断是否有openid
                             {
-                                string userSql1 = "select usercode from t_user_list where agentid = '" + dt.Rows[i]["agentid"].ToString() + "'";
-                                DataTable userDt1 = DatabaseOperationWeb.ExecuteSelectDS(userSql1, "ims_ewei_shop_order").Tables[0];
-                                if (userDt1.Rows.Count > 0)
+                                string openid = dt.Rows[i]["openid"].ToString().Replace("sns_wa_", "");
+                                string dsql = "select u.* from t_wxapp_pagent_member m,t_user_list u " +
+                                    "where m.supplierCode= u.usercode and u.usertype='4' " +
+                                    "and m.openId= 'oQXDM4sVG6fS-Jdu3tnnuDFDo-Xc' " +
+                                    "and m.purchasersCode= 'bbcagent@llwell.net'";
+                                DataTable dDt = DatabaseOperationWeb.ExecuteSelectDS(dsql, "t_user_list").Tables[0];
+                                if (dDt.Rows.Count>0)
                                 {
-                                    distributionCode = userDt.Rows[0][0].ToString();
-                                }
-                                else
-                                {
-                                    //没有对应分销商，先不处理
+                                    distributionCode = dDt.Rows[0]["usercode"].ToString();
                                 }
                             }
                             string[] address = dt.Rows[i]["address"].ToString().Split(';');
@@ -104,6 +117,7 @@ namespace core测试.Controllers
                             orderItem.consigneeMobile = tel;
                             orderItem.payType = dt.Rows[i]["paytype1"].ToString();
                             orderItem.payNo = dt.Rows[i]["transid"].ToString();
+                            double.TryParse(dt.Rows[i]["dispatchprice"].ToString(), out orderItem.freight);
 
                             string[] idnum = dt.Rows[i]["diyformdata"].ToString().Split(';');
                             if (idnum.Length > 2)
@@ -339,6 +353,7 @@ namespace core测试.Controllers
                 if (myDictionary.Count() > 1)//一个订单有一个以上仓库和供应商的商品
                 {
                     int num = 0;
+                    double freight = 0;
                     foreach (var kvp in myDictionary)
                     {
                         if (num == 0)//第一个仓库的订单修改部分字段
@@ -354,6 +369,16 @@ namespace core测试.Controllers
                                 orderItem.OrderGoods.Add(item);
                             }
                             orderItem.tradeAmount = tradeAmount.ToString();
+                            //处理运费(暂时只针对大连32库) -20190104韩
+                            if (kvp.Key.ToString() == "42"|| kvp.Key.ToString() == "43" || kvp.Key.ToString() == "57" || kvp.Key.ToString() == "58")
+                            {
+
+                            }
+                            else
+                            {
+                                freight = orderItem.freight;
+                                orderItem.freight = 0;
+                            }
                             newOrderItemList.Add(orderItem);
                         }
                         else//其他仓库的订单新建子订单
@@ -380,6 +405,18 @@ namespace core测试.Controllers
                             orderItemNew.purchase = orderItem.purchase;
                             orderItemNew.payType = orderItem.payType;
                             orderItemNew.payNo = orderItem.payNo;
+
+                            //处理运费(暂时只针对大连32库) -20190104韩
+                            if (kvp.Key.ToString() == "42" || kvp.Key.ToString() == "43" || kvp.Key.ToString() == "57" || kvp.Key.ToString() == "58")
+                            {
+                                orderItemNew.freight = freight;
+                                freight = 0;
+                            }
+                            else
+                            {
+                                orderItemNew.freight = 0;
+                            }
+
 
                             orderItemNew.OrderGoods = new List<OrderGoodsItem>();
                             double tradeAmount = 0;
@@ -480,7 +517,7 @@ namespace core测试.Controllers
                     //    freight -= orderGoodsItem.waybillPrice;
                     //}
                     //从运费平摊修改为运费都为全部运费。
-                    orderGoodsItem.waybillPrice = freight;
+                    //orderGoodsItem.waybillPrice = freight;
 
 
                     //处理供货价和销售价和供货商code
@@ -627,20 +664,27 @@ namespace core测试.Controllers
                     //处理利润
                     //利润=售价-供货价
                     double profit = (orderGoodsItem.skuUnitPrice - orderGoodsItem.purchasePrice) * orderGoodsItem.quantity;
-                    double profitAgent = 0, profitDealer = 0, profitOther1 = 0, profitOther2 = 0, profitOther3 = 0;
+                    double profitPlatform = 0, profitAgent = 0, profitDealer = 0, profitOther1 = 0, profitOther2 = 0, profitOther3 = 0;
+                    double.TryParse(orderGoodsItem.dr["profitPlatform"].ToString(), out profitPlatform);
                     double.TryParse(orderGoodsItem.dr["profitAgent"].ToString(), out profitAgent);
                     double.TryParse(orderGoodsItem.dr["profitDealer"].ToString(), out profitDealer);
                     double.TryParse(orderGoodsItem.dr["profitOther1"].ToString(), out profitOther1);
                     double.TryParse(orderGoodsItem.dr["profitOther2"].ToString(), out profitOther2);
                     double.TryParse(orderGoodsItem.dr["profitOther3"].ToString(), out profitOther3);
+                    orderGoodsItem.profitPlatform = Math.Round(profit * profitPlatform / 100, 2);
                     orderGoodsItem.profitAgent = Math.Round(profit * profitAgent / 100, 2);
                     orderGoodsItem.profitDealer = Math.Round(profit * profitDealer / 100, 2);
                     orderGoodsItem.profitOther1 = Math.Round(profit * profitOther1 / 100, 2);
                     orderGoodsItem.profitOther2 = Math.Round(profit * profitOther2 / 100, 2);
                     orderGoodsItem.profitOther3 = Math.Round(profit * profitOther3 / 100, 2);
-                    orderGoodsItem.profitPlatform = Math.Round(profit - orderGoodsItem.profitAgent
+                    double x = Math.Round(profit - orderGoodsItem.profitPlatform - orderGoodsItem.profitAgent
                                                     - orderGoodsItem.profitDealer - orderGoodsItem.profitOther1
                                                     - orderGoodsItem.profitOther2 - orderGoodsItem.profitOther3, 2);
+                    if (x!=0)
+                    {
+                        orderGoodsItem.profitAgent = orderGoodsItem.profitAgent + x;
+                    }
+                    
                     orderGoodsItem.other1Name = orderGoodsItem.dr["profitOther1Name"].ToString();
                     orderGoodsItem.other2Name = orderGoodsItem.dr["profitOther2Name"].ToString();
                     orderGoodsItem.other3Name = orderGoodsItem.dr["profitOther3Name"].ToString();
@@ -682,7 +726,7 @@ namespace core测试.Controllers
                     "expressId,inputTime,fqID,supplierAgentCode,purchaseAgentCode," +
                     "operate_status,sendapi,platformId,consignorName," +
                     "consignorMobile,consignorAddr,batchid,outNo,waybillOutNo," +
-                    "accountsStatus,accountsNo,prePayId,ifPrint,printNo) " +
+                    "accountsStatus,accountsNo,prePayId,ifPrint,printNo,freight) " +
                     "values('" + orderItem.warehouseId + "','" + orderItem.warehouseCode + "','" + orderItem.supplier + "',''" +
                     ",'','','" + orderItem.parentOrderId + "','" + orderItem.merchantOrderId + "'" +
                     ",'" + orderItem.payType + "','" + orderItem.payNo + "','" + orderItem.tradeTime + "','" + orderItem.consigneeCode + "'" +
@@ -690,11 +734,11 @@ namespace core测试.Controllers
                     ",'" + orderItem.addrCountry + "','" + orderItem.addrProvince + "','" + orderItem.addrCity + "','" + orderItem.addrDistrict + "'" +
                     ",'" + orderItem.addrDetail + "','','1','" + orderItem.idNumber + "'" +
                     ",'','','1','" + orderItem.purchase + "'" +
-                    ",'" + orderItem.purchaseId + "','','',''" +
+                    ",'" + orderItem.purchaseId + "','" + orderItem.distribution + "','1',''" +
                     ",'',now(),'','" + orderItem.supplierAgentCode + "','" + orderItem.purchaseAgentCode + "'" +
                     ",'0','','" + orderItem.platformId + "','" + orderItem.consignorName + "'" +
                     ",'" + orderItem.consignorMobile + "','" + orderItem.consignorAddr + "','','',''" +
-                    ",'0','','','0','') ";
+                    ",'0','','','0','','" + orderItem.freight + "') ";
                 al.Add(sqlorder);
             }
 
@@ -829,7 +873,7 @@ namespace core测试.Controllers
                 OrderBean ob = new OrderBean("", "", dt.Rows[i]["ordersn"].ToString(), dt.Rows[i]["ordersn"].ToString(),
                     GetTime(dt.Rows[i]["createtime"].ToString()).ToString("yyyy-MM-dd HH:mm:ss"), Convert.ToDouble(dt.Rows[i]["price"].ToString()),
                    Convert.ToDouble(dt.Rows[i]["goodsprice"].ToString()), name, tel, "中国", pro, city, area, addr, zipcode, "1", cardnum, "", "",
-                   status, purchaserCode, distributionCode, "1", "", "BBC", null);
+                   status, purchaserCode, distributionCode, "1", "", "BBC","0", null);
                 string sql1 = "select g.productsn,g.title,g.costprice,o.* " +
                               "from ims_ewei_shop_order_goods o ,ims_ewei_shop_goods g " +
                               "where o.goodsid =g.id and  o.orderid = " + dt.Rows[i]["id"].ToString();
@@ -1056,13 +1100,13 @@ namespace core测试.Controllers
                                                 "addrCountry,addrProvince,addrCity,addrDistrict," +
                                                 "addrDetail,zipCode,idType,idNumber," +
                                                 "idFountImgUrl,idBackImgUrl,status,purchaserCode," +
-                                                "distributionCode,apitype,fqID,sendapi) " +
+                                                "distributionCode,apitype,fqID,sendapi,freight) " +
                         "values('" + orderBean.WarehouseCode + "','" + orderBean.ParentOrderId + "','" + orderBean.MerchantOrderId + "','" + orderBean.TradeTime + "'," +
                         "'" + orderBean.TradeAmount + "','" + orderBean.GoodsTotalAmount + "','" + orderBean.ConsigneeName + "','" + orderBean.ConsigneeMobile + "'," +
                         "'" + orderBean.AddrCountry + "','" + orderBean.AddrProvince + "','" + orderBean.AddrCity + "','" + orderBean.AddrDistrict + "'," +
                         "'" + orderBean.AddrDetail + "','" + orderBean.ZipCode + "','" + orderBean.IdType + "','" + orderBean.IdNumber + "'," +
                         "'" + orderBean.IdFountImgUrl + "','" + orderBean.IdBackImgUrl + "','" + orderBean.Status + "','" + orderBean.PurchaserCode + "'," +
-                        "'" + orderBean.DistributionCode + "','" + orderBean.Apitype + "','" + orderBean.FqID + "','" + orderBean.Sendapi + "')";
+                        "'" + orderBean.DistributionCode + "','" + orderBean.Apitype + "','" + orderBean.FqID + "','" + orderBean.Sendapi + "','" + orderBean.Freight + "')";
             return DatabaseOperationWeb.ExecuteDML(insql);
         }
         private bool saveOrderGoods(string wcode, List<GoodsBean> goodsBeanList)
@@ -1140,9 +1184,10 @@ namespace core测试.Controllers
         private string apitype;
         private string fqID;
         private string sendapi;
+        private string freight;
         private List<GoodsBean> goodsList;
 
-        public OrderBean(string id, string warehouseCode, string parentOrderId, string merchantOrderId, string tradeTime, double tradeAmount, double goodsTotalAmount, string consigneeName, string consigneeMobile, string addrCountry, string addrProvince, string addrCity, string addrDistrict, string addrDetail, string zipCode, string idType, string idNumber, string idFountImgUrl, string idBackImgUrl, string status, string purchaserCode, string distributionCode, string apitype, string fqID, string sendapi, List<GoodsBean> goodsList)
+        public OrderBean(string id, string warehouseCode, string parentOrderId, string merchantOrderId, string tradeTime, double tradeAmount, double goodsTotalAmount, string consigneeName, string consigneeMobile, string addrCountry, string addrProvince, string addrCity, string addrDistrict, string addrDetail, string zipCode, string idType, string idNumber, string idFountImgUrl, string idBackImgUrl, string status, string purchaserCode, string distributionCode, string apitype, string fqID, string sendapi,string freight, List<GoodsBean> goodsList)
         {
             this.id = id;
             this.warehouseCode = warehouseCode;
@@ -1169,6 +1214,7 @@ namespace core测试.Controllers
             this.apitype = apitype;
             this.fqID = fqID;
             this.sendapi = sendapi;
+            this.freight = freight;
             this.goodsList = goodsList;
         }
 
@@ -1196,6 +1242,7 @@ namespace core测试.Controllers
         public string Apitype { get => apitype; set => apitype = value; }
         public string FqID { get => fqID; set => fqID = value; }
         public string Sendapi { get => sendapi; set => sendapi = value; }
+        public string Freight { get => freight; set => freight = value; }
         public List<GoodsBean> GoodsList { get => goodsList; set => goodsList = value; }
         public string Id { get => id; set => id = value; }
     }
