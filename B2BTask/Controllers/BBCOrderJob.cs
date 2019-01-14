@@ -19,11 +19,10 @@ namespace core测试.Controllers
             BBCDBManager bbc = new BBCDBManager();
             DatabaseOperationWeb.TYPE = bbc;
             //处理bbc-->b2b
-            string sql = "select  cast(o.paytype as SIGNED INTEGER) paytype1,m.id as consigneeCode,o.* " +
-                "from ims_ewei_shop_order o ,(select min(id) id,openid from ims_ewei_shop_member group by openid) m  " +
-                "where o.openid = m.openid " +
-                "and  (o.virtual_info is null or (o.virtual_info !=o.`status` and  o.virtual_info !='-1')) " +
-                "and o.`status` >0 and o.id > 333";
+            string sql = "select  cast(o.paytype as SIGNED INTEGER) paytype1,m.id as consigneeCode,o.*  ,p.* " +
+                "from(select min(id) id, openid from ims_ewei_shop_member group by openid) m  ,ims_ewei_shop_order o " +
+                "left JOIN(select parentOrderId, GROUP_CONCAT(waybillno) waybillno from v_llwell_order  GROUP BY parentOrderId) p ON o.ordersn = p.parentorderid " +
+                "where o.openid = m.openid  and(o.virtual_info is null or(o.virtual_info != o.`status` and  o.virtual_info != '-1'))  and o.`status` > 0 and o.id > 333";
             DataTable dt = DatabaseOperationWeb.ExecuteSelectDS(sql, "ims_ewei_shop_order").Tables[0];
             if (dt.Rows.Count > 0)
             {
@@ -159,23 +158,44 @@ namespace core测试.Controllers
                             b2bAL.Add(sql2);
                         }
                     }
-                    else if (dt.Rows[i]["virtual_info"].ToString() == "0")
+                    else if (dt.Rows[i]["virtual_info"].ToString() == "0" && dt.Rows[i]["waybillno"].ToString() != "")
                     {
-                        //b2b推订单过来支付的情况，修改b2b订单状态
-                        string sql = "update t_order_list set " +
-                            "payType='"+ dt.Rows[i]["paytype"].ToString() + "'," +
-                            "payNo='" + dt.Rows[i]["transid"].ToString() + "' , " +
-                            "status='1' " +
-                            "where parentOrderId ='"+ dt.Rows[i]["ordersn"].ToString() + "'";
-                        b2bAL.Add(sql);
-                        string sql1 = "update ims_ewei_shop_order set virtual_info = '1' where id =  '" + dt.Rows[i]["id"].ToString() + "'";
+                        //如果状态是1并且运单号不为空；
+                        string sql1 = "update ims_ewei_shop_order set virtual_info = '2',status='2',expresssn='" + dt.Rows[i]["waybillno"].ToString() + "' " +
+                            " where id =  '" + dt.Rows[i]["id"].ToString() + "'";
                         bbcAL.Add(sql1);
                         string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
                                       "values('" + dt.Rows[i]["ordersn"].ToString() + "'," +
                                       "'" + dt.Rows[i]["status"].ToString() + "'," +
                                       "'" + dt.Rows[i]["virtual_info"].ToString() + "','1','修改状态')";
                         b2bAL.Add(sql2);
+                        ////b2b推订单过来支付的情况，修改b2b订单状态
+                        //string sql = "update t_order_list set " +
+                        //    "payType='" + dt.Rows[i]["paytype"].ToString() + "'," +
+                        //    "payNo='" + dt.Rows[i]["transid"].ToString() + "' , " +
+                        //    "status='1' " +
+                        //    "where parentOrderId ='" + dt.Rows[i]["ordersn"].ToString() + "'";
+                        //b2bAL.Add(sql);
+                        //string sql1 = "update ims_ewei_shop_order set virtual_info = '1' where id =  '" + dt.Rows[i]["id"].ToString() + "'";
+                        //bbcAL.Add(sql1);
+                        //string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
+                        //              "values('" + dt.Rows[i]["ordersn"].ToString() + "'," +
+                        //              "'" + dt.Rows[i]["status"].ToString() + "'," +
+                        //              "'" + dt.Rows[i]["virtual_info"].ToString() + "','1','修改状态')";
+                        //b2bAL.Add(sql2);
                     }
+                    //else if (dt.Rows[i]["virtual_info"].ToString() == "1"&& dt.Rows[i]["waybillno"].ToString() != "")
+                    //{
+                    //    //如果状态是1并且运单号不为空；
+                    //    string sql1 = "update ims_ewei_shop_order set virtual_info = '2'，status='2',expresssn='" + dt.Rows[i]["waybillno"].ToString() + "' " +
+                    //        " where id =  '" + dt.Rows[i]["id"].ToString() + "'";
+                    //    bbcAL.Add(sql1);
+                    //    string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
+                    //                  "values('" + dt.Rows[i]["ordersn"].ToString() + "'," +
+                    //                  "'" + dt.Rows[i]["status"].ToString() + "'," +
+                    //                  "'" + dt.Rows[i]["virtual_info"].ToString() + "','1','修改状态')";
+                    //    b2bAL.Add(sql2);
+                    //}
                     else
                     {
                         //暂时没有这种情况
@@ -191,7 +211,7 @@ namespace core测试.Controllers
                     {
                         //暂时没有这种情况
                     }
-                    else
+                    else if (dt.Rows[i]["virtual_info"].ToString() == "2")
                     {
                         //修改b2b里的订单状态。
                         string sql = "update t_order_list set  status='5' " +
@@ -243,37 +263,37 @@ namespace core测试.Controllers
                     }
                     catch
                     {
-                        error += "创建时间日期格式填写错误,";
+                        //error += "创建时间日期格式填写错误,";
                     }
-                    //判断地址是否正确
-                    string sqlp = "select provinceid from t_base_provinces where province like '" + orderItem.addrProvince + "%'";
-                    DataTable dtp = DatabaseOperationWeb.ExecuteSelectDS(sqlp, "TABLE").Tables[0];
-                    if (dtp.Rows.Count > 0)
-                    {
-                        string provinceid = dtp.Rows[0][0].ToString();
-                        string sqlc = "select cityid from t_base_cities  " +
-                            "where city like '" + orderItem.addrCity + "%' and provinceid=" + provinceid + "";
-                        DataTable dtc = DatabaseOperationWeb.ExecuteSelectDS(sqlc, "TABLE").Tables[0];
-                        if (dtc.Rows.Count > 0)
-                        {
-                            string cityid = dtc.Rows[0][0].ToString();
-                            string sqla = "select id from t_base_areas " +
-                                "where area ='" + orderItem.addrDistrict + "' and cityid=" + cityid + "";
-                            DataTable dta = DatabaseOperationWeb.ExecuteSelectDS(sqla, "TABLE").Tables[0];
-                            if (dta.Rows.Count == 0)
-                            {
-                                error += "收货人区填写错误,";
-                            }
-                        }
-                        else
-                        {
-                            error += "收货人市填写错误,";
-                        }
-                    }
-                    else
-                    {
-                        error += "收货人省填写错误,";
-                    }
+                    ////判断地址是否正确
+                    //string sqlp = "select provinceid from t_base_provinces where province like '" + orderItem.addrProvince + "%'";
+                    //DataTable dtp = DatabaseOperationWeb.ExecuteSelectDS(sqlp, "TABLE").Tables[0];
+                    //if (dtp.Rows.Count > 0)
+                    //{
+                    //    string provinceid = dtp.Rows[0][0].ToString();
+                    //    string sqlc = "select cityid from t_base_cities  " +
+                    //        "where city like '" + orderItem.addrCity + "%' and provinceid=" + provinceid + "";
+                    //    DataTable dtc = DatabaseOperationWeb.ExecuteSelectDS(sqlc, "TABLE").Tables[0];
+                    //    if (dtc.Rows.Count > 0)
+                    //    {
+                    //        string cityid = dtc.Rows[0][0].ToString();
+                    //        string sqla = "select id from t_base_areas " +
+                    //            "where area ='" + orderItem.addrDistrict + "' and cityid=" + cityid + "";
+                    //        DataTable dta = DatabaseOperationWeb.ExecuteSelectDS(sqla, "TABLE").Tables[0];
+                    //        if (dta.Rows.Count == 0)
+                    //        {
+                    //            error += "收货人区填写错误,";
+                    //        }
+                    //    }
+                    //    else
+                    //    {
+                    //        error += "收货人市填写错误,";
+                    //    }
+                    //}
+                    //else
+                    //{
+                    //    error += "收货人省填写错误,";
+                    //}
                     //判断商品
                     foreach (OrderGoodsItem orderGoodsItem in orderItem.OrderGoods)
                     {
@@ -763,12 +783,12 @@ namespace core测试.Controllers
                         string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
                                       "values('" + kvp.Key + "'," +
                                       "'1'," +
-                                      "'','0','"+ kvp.Value + "')";
+                                      "'','1','"+ kvp.Value + "')";
                         b2bAL.Add(sql2);
                     }
                     else
                     {
-                        string sql = "update ims_ewei_shop_order set virtual_info = '1' where ordersn =  '" + kvp.Key + "'";
+                        string sql = "update ims_ewei_shop_order set virtual_info = '0' where ordersn =  '" + kvp.Key + "'";
                         bbcAL.Add(sql);
                         string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
                                       "values('" + kvp.Key + "','1','','1','')";
