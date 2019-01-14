@@ -85,7 +85,7 @@ namespace core测试.Controllers
                                 string openid = dt.Rows[i]["openid"].ToString().Replace("sns_wa_", "");
                                 string dsql = "select u.* from t_wxapp_pagent_member m,t_user_list u " +
                                     "where m.supplierCode= u.usercode and u.usertype='4' " +
-                                    "and m.openId= 'oQXDM4sVG6fS-Jdu3tnnuDFDo-Xc' " +
+                                    "and m.openId= '"+ openid + "' " +
                                     "and m.purchasersCode= 'bbcagent@llwell.net'";
                                 DataTable dDt = DatabaseOperationWeb.ExecuteSelectDS(dsql, "t_user_list").Tables[0];
                                 if (dDt.Rows.Count>0)
@@ -118,6 +118,9 @@ namespace core测试.Controllers
                             orderItem.payType = dt.Rows[i]["paytype1"].ToString();
                             orderItem.payNo = dt.Rows[i]["transid"].ToString();
                             double.TryParse(dt.Rows[i]["dispatchprice"].ToString(), out orderItem.freight);
+                            double.TryParse(dt.Rows[i]["discountPrice"].ToString(), out orderItem.discountPrice);
+                            double.TryParse(dt.Rows[i]["couponId"].ToString(), out orderItem.couponId);
+                            double.TryParse(dt.Rows[i]["couponPrice"].ToString(), out orderItem.couponPrice);
 
                             string[] idnum = dt.Rows[i]["diyformdata"].ToString().Split(';');
                             if (idnum.Length > 2)
@@ -138,7 +141,7 @@ namespace core测试.Controllers
                                 orderGoodsItem.barCode = dt1.Rows[j]["productsn"].ToString();
                                 orderGoodsItem.skuBillName = dt1.Rows[j]["title"].ToString();
                                 orderGoodsItem.quantity = Convert.ToDouble(dt1.Rows[j]["total"]);
-                                orderGoodsItem.skuUnitPrice = Convert.ToDouble(dt1.Rows[j]["price"].ToString()) / Convert.ToDouble(dt1.Rows[j]["total"].ToString());
+                                orderGoodsItem.skuUnitPrice = Convert.ToDouble(dt1.Rows[j]["realprice"].ToString()) / Convert.ToDouble(dt1.Rows[j]["total"].ToString());
                                 orderItem.OrderGoods.Add(orderGoodsItem);
                             }
                             OrderItemList.Add(orderItem);
@@ -456,17 +459,17 @@ namespace core测试.Controllers
                 {
                     continue;
                 }
-                double freight = 0, tradeAmount = 1;
-                double.TryParse(orderItem.OrderGoods[0].dr["freight"].ToString(), out freight);
-                double.TryParse(orderItem.tradeAmount, out tradeAmount);
-                orderItem.freight = Math.Round(freight, 2);
+                //double freight = 0, tradeAmount = 1;
+                //double.TryParse(orderItem.OrderGoods[0].dr["freight"].ToString(), out freight);
+                //double.TryParse(orderItem.tradeAmount, out tradeAmount);
+                //orderItem.freight = Math.Round(freight, 2);
                 orderItem.platformId = orderItem.OrderGoods[0].dr["platformId"].ToString();
                 orderItem.warehouseId = orderItem.OrderGoods[0].dr["wid"].ToString();
                 orderItem.warehouseCode = orderItem.OrderGoods[0].dr["wcode"].ToString();
                 orderItem.supplier = orderItem.OrderGoods[0].dr["suppliercode"].ToString();
                 orderItem.purchaseId = orderItem.OrderGoods[0].dr["userId"].ToString();
 
-                double fr = Math.Round(orderItem.freight / tradeAmount, 4);
+                //double fr = Math.Round(orderItem.freight / tradeAmount, 4);
 
                 //处理供货代理提点
                 double supplierAgentCost = 0;
@@ -527,7 +530,7 @@ namespace core测试.Controllers
                     orderGoodsItem.slt = orderGoodsItem.dr["slt"].ToString();
                     orderGoodsItem.totalPrice = orderGoodsItem.skuUnitPrice * orderGoodsItem.quantity;
                     string goodsWarehouseId = orderGoodsItem.dr["goodsWarehouseId"].ToString();//库存id
-                                                                                               //处理税
+                    //税率                                                                          //处理税
                     double taxation = 0;
                     double.TryParse(orderGoodsItem.dr["taxation"].ToString(), out taxation);
                     if (taxation > 0)
@@ -673,7 +676,10 @@ namespace core测试.Controllers
                     double.TryParse(orderGoodsItem.dr["profitOther3"].ToString(), out profitOther3);
                     orderGoodsItem.profitPlatform = Math.Round(profit * profitPlatform / 100, 2);
                     orderGoodsItem.profitAgent = Math.Round(profit * profitAgent / 100, 2);
-                    orderGoodsItem.profitDealer = Math.Round(profit * profitDealer / 100, 2);
+                    if (orderItem.distribution!="")
+                    {
+                        orderGoodsItem.profitDealer = Math.Round(profit * profitDealer / 100, 2);
+                    }
                     orderGoodsItem.profitOther1 = Math.Round(profit * profitOther1 / 100, 2);
                     orderGoodsItem.profitOther2 = Math.Round(profit * profitOther2 / 100, 2);
                     orderGoodsItem.profitOther3 = Math.Round(profit * profitOther3 / 100, 2);
@@ -726,7 +732,8 @@ namespace core测试.Controllers
                     "expressId,inputTime,fqID,supplierAgentCode,purchaseAgentCode," +
                     "operate_status,sendapi,platformId,consignorName," +
                     "consignorMobile,consignorAddr,batchid,outNo,waybillOutNo," +
-                    "accountsStatus,accountsNo,prePayId,ifPrint,printNo,freight) " +
+                    "accountsStatus,accountsNo,prePayId,ifPrint,printNo," +
+                    "freight,discountPrice,couponId,couponPrice) " +
                     "values('" + orderItem.warehouseId + "','" + orderItem.warehouseCode + "','" + orderItem.supplier + "',''" +
                     ",'','','" + orderItem.parentOrderId + "','" + orderItem.merchantOrderId + "'" +
                     ",'" + orderItem.payType + "','" + orderItem.payNo + "','" + orderItem.tradeTime + "','" + orderItem.consigneeCode + "'" +
@@ -738,7 +745,8 @@ namespace core测试.Controllers
                     ",'',now(),'','" + orderItem.supplierAgentCode + "','" + orderItem.purchaseAgentCode + "'" +
                     ",'0','','" + orderItem.platformId + "','" + orderItem.consignorName + "'" +
                     ",'" + orderItem.consignorMobile + "','" + orderItem.consignorAddr + "','','',''" +
-                    ",'0','','','0','','" + orderItem.freight + "') ";
+                    ",'0','','','0',''" +
+                    ",'" + orderItem.freight + "','" + orderItem.discountPrice + "','" + orderItem.couponId + "','" + orderItem.couponPrice + "') ";
                 al.Add(sqlorder);
             }
 
@@ -1315,7 +1323,6 @@ namespace core测试.Controllers
         public string addrCity;//城市
         public string addrDistrict;//县区
         public string addrDetail;//详细地址
-        public double freight;//运费
         public string platformId;//平台渠道id
         public double sales;//销量
         public double purchaseTotal;//渠道利润
@@ -1328,6 +1335,11 @@ namespace core测试.Controllers
         public string payType;//支付类型
         public string payNo;//支付单号
         public string payTime;//支付单生成时间
+        //2019-01-11下面3个费用在结算时从代理里扣除
+        public double freight;//运费
+        public double discountPrice;//会员折扣
+        public double couponId;//优惠券id
+        public double couponPrice;//优惠券金额
 
         public List<OrderGoodsItem> OrderGoods;//商品列表
     }
