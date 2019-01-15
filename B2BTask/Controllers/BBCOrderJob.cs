@@ -160,8 +160,9 @@ namespace core测试.Controllers
                     }
                     else if (dt.Rows[i]["virtual_info"].ToString() == "0" && dt.Rows[i]["waybillno"].ToString() != "")
                     {
+                        string sjc = ConvertDateTimeToInt(DateTime.Now);
                         //如果状态是1并且运单号不为空；
-                        string sql1 = "update ims_ewei_shop_order set virtual_info = '2',status='2',expresssn='" + dt.Rows[i]["waybillno"].ToString() + "' " +
+                        string sql1 = "update ims_ewei_shop_order set virtual_info = '2',sendtime="+sjc+", status='2',,expresssn='" + dt.Rows[i]["waybillno"].ToString() + "' " +
                             " where id =  '" + dt.Rows[i]["id"].ToString() + "'";
                         bbcAL.Add(sql1);
                         string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
@@ -805,6 +806,17 @@ namespace core测试.Controllers
                     DatabaseOperationWeb.ExecuteDML(bbcAL);
                 }
             }
+        }
+        /// <summary>  
+        /// 将c# DateTime时间格式转换为Unix时间戳格式  
+        /// </summary>  
+        /// <param name="time">时间</param>  
+        /// <returns>long</returns>  
+        public string ConvertDateTimeToInt(System.DateTime time)
+        {
+            System.DateTime startTime = TimeZone.CurrentTimeZone.ToLocalTime(new System.DateTime(1970, 1, 1, 0, 0, 0, 0));
+            long t = (time.Ticks - startTime.Ticks) / 10000000;   //除10000调整为13位      
+            return t.ToString();
         }
         /// <summary>
         /// 添加订单日志
