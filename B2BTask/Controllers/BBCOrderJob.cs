@@ -162,7 +162,7 @@ namespace core测试.Controllers
                     {
                         string sjc = ConvertDateTimeToInt(DateTime.Now);
                         //如果状态是1并且运单号不为空；
-                        string sql1 = "update ims_ewei_shop_order set virtual_info = '2',sendtime="+sjc+", status='2',,expresssn='" + dt.Rows[i]["waybillno"].ToString() + "' " +
+                        string sql1 = "update ims_ewei_shop_order set virtual_info = '2',sendtime="+sjc+", status='2',expresssn='" + dt.Rows[i]["waybillno"].ToString() + "' " +
                             " where id =  '" + dt.Rows[i]["id"].ToString() + "'";
                         bbcAL.Add(sql1);
                         string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
