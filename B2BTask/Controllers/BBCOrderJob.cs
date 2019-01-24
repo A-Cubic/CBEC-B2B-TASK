@@ -13,7 +13,7 @@ namespace core测试.Controllers
     public class BBCOrderJob : Job
     {
         // Begin 起始时间；Interval执行时间间隔，单位是毫秒，建议使用以下格式，此处为半小时；SkipWhileExecuting是否等待上一个执行完成，true为等待；
-        [Invoke(Begin = "2016-11-29 22:10", Interval = 1000, SkipWhileExecuting = true)]
+        [Invoke(Begin = "2016-11-29 22:10", Interval = 1000000, SkipWhileExecuting = true)]
         public void Run()
         {
             BBCDBManager bbc = new BBCDBManager();
@@ -22,7 +22,7 @@ namespace core测试.Controllers
             string sql = "select  cast(o.paytype as SIGNED INTEGER) paytype1,m.id as consigneeCode,o.*  ,p.* " +
                 "from(select min(id) id, openid from ims_ewei_shop_member group by openid) m  ,ims_ewei_shop_order o " +
                 "left JOIN(select parentOrderId, GROUP_CONCAT(waybillno) waybillno from v_llwell_order  GROUP BY parentOrderId) p ON o.ordersn = p.parentorderid " +
-                "where o.openid = m.openid  and(o.virtual_info is null or(o.virtual_info != o.`status` and  o.virtual_info != '-1'))  and o.`status` > 0 and o.id > 333";
+                "where o.openid = m.openid  and ((o.virtual_info is null and status !='-1')  or (o.virtual_info != o.`status` and  o.virtual_info != '-1')) and o.status!='0'   and o.id > 333";
             DataTable dt = DatabaseOperationWeb.ExecuteSelectDS(sql, "ims_ewei_shop_order").Tables[0];
             if (dt.Rows.Count > 0)
             {
@@ -79,15 +79,15 @@ namespace core测试.Controllers
                             //        //没有对应分销商，先不处理
                             //    }
                             //}
-                            if (dt.Rows[i]["openid"].ToString().IndexOf("sns_wa_")>=0)//判断是否有openid
+                            if (dt.Rows[i]["openid"].ToString().IndexOf("sns_wa_") >= 0)//判断是否有openid
                             {
                                 string openid = dt.Rows[i]["openid"].ToString().Replace("sns_wa_", "");
                                 string dsql = "select u.* from t_wxapp_pagent_member m,t_user_list u " +
                                     "where m.supplierCode= u.usercode and u.usertype='4' " +
-                                    "and m.openId= '"+ openid + "' " +
+                                    "and m.openId= '" + openid + "' " +
                                     "and m.purchasersCode= 'bbcagent@llwell.net'";
                                 DataTable dDt = DatabaseOperationWeb.ExecuteSelectDS(dsql, "t_user_list").Tables[0];
-                                if (dDt.Rows.Count>0)
+                                if (dDt.Rows.Count > 0)
                                 {
                                     distributionCode = dDt.Rows[0]["usercode"].ToString();
                                 }
@@ -162,7 +162,7 @@ namespace core测试.Controllers
                     {
                         string sjc = ConvertDateTimeToInt(DateTime.Now);
                         //如果状态是1并且运单号不为空；
-                        string sql1 = "update ims_ewei_shop_order set virtual_info = '2',sendtime="+sjc+", status='2',expresssn='" + dt.Rows[i]["waybillno"].ToString() + "' " +
+                        string sql1 = "update ims_ewei_shop_order set virtual_info = '2',sendtime=" + sjc + ", status='2',expresssn='" + dt.Rows[i]["waybillno"].ToString() + "' " +
                             " where id =  '" + dt.Rows[i]["id"].ToString() + "'";
                         bbcAL.Add(sql1);
                         string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
@@ -227,16 +227,63 @@ namespace core测试.Controllers
                         b2bAL.Add(sql2);
                     }
                 }
-                else if (dt.Rows[i]["status"].ToString() == "4")//申请退单
+                else if (dt.Rows[i]["status"].ToString() == "-1")//申请退单
                 {
-                    if (dt.Rows[i]["virtual_info"].ToString() == "")//未处理过
+                    string sqltd1 = "select * from t_order_list where parentOrderId = '" + dt.Rows[i]["ordersn"].ToString() + "'";
+                    DataTable dtTd1 = DatabaseOperationWeb.ExecuteSelectDS(sqltd1, "t_user_list").Tables[0];
+                    if (dtTd1.Rows.Count > 0)
                     {
-                        //暂时没有这种情况
+                        for (int j = 0; j < dtTd1.Rows.Count; j++)
+                        {
+                            if (dtTd1.Rows[j]["status"].ToString() == "1")
+                            {
+                                string sql3 = "update t_order_list set  status='-1'  where merchantOrderId ='" + dt.Rows[i]["ordersn"].ToString() + "'";
+                                b2bAL.Add(sql3);
+                            }
+                            else if (dtTd1.Rows[j]["status"].ToString() == "3" || dtTd1.Rows[j]["status"].ToString() == "4" || dtTd1.Rows[j]["status"].ToString() == "5")
+                            {
+                                string sqltd2 = "select * from t_account_analysis where merchantOrderId ='" + dtTd1.Rows[j]["merchantOrderId"].ToString() + "'";
+                                DataTable dtTd2 = DatabaseOperationWeb.ExecuteSelectDS(sqltd2, "t_user_list").Tables[0];
+                                if (dtTd2.Rows.Count > 0)
+                                {
+                                    double price = Convert.ToDouble(dtTd2.Rows[0]["price"]);
+                                    double supplyPrice = Convert.ToDouble(dtTd2.Rows[0]["supplyPrice"]);
+                                    double purchasePrice = Convert.ToDouble(dtTd2.Rows[0]["purchasePrice"]);
+                                    double waybillPrice = Convert.ToDouble(dtTd2.Rows[0]["waybillPrice"]);
+                                    double tax = Convert.ToDouble(dtTd2.Rows[0]["tax"]);
+                                    double platformPrice = Convert.ToDouble(dtTd2.Rows[0]["platformPrice"]);
+                                    double supplierAgentPrice = Convert.ToDouble(dtTd2.Rows[0]["supplierAgentPrice"]);
+                                    double purchaseAgentPrice = Convert.ToDouble(dtTd2.Rows[0]["purchaseAgentPrice"]);
+                                    double profitPlatform = Convert.ToDouble(dtTd2.Rows[0]["profitPlatform"]);
+                                    double profitAgent = Convert.ToDouble(dtTd2.Rows[0]["profitAgent"]);
+                                    double profitDealer = Convert.ToDouble(dtTd2.Rows[0]["profitDealer"]);
+                                    double profitOther1 = Convert.ToDouble(dtTd2.Rows[0]["profitOther1"]);
+                                    double profitOther2 = Convert.ToDouble(dtTd2.Rows[0]["profitOther2"]);
+                                    double profitOther3 = Convert.ToDouble(dtTd2.Rows[0]["profitOther3"]);
+                                    double compensate = Convert.ToDouble(dtTd2.Rows[0]["compensate"]);
+                                    double agentWaybillPrice = Convert.ToDouble(dtTd2.Rows[0]["agentWaybillPrice"]);
+                                    double agentMarketingPrice = Convert.ToDouble(dtTd2.Rows[0]["agentMarketingPrice"]);
+                                    string sql4 = "insert into t_account_analysis(status,merchantOrderId,createTime,price," +
+                                        "supplyPrice,purchasePrice,waybillPrice,tax," +
+                                        "platformPrice,supplierAgentPrice,purchaseAgentPrice,profitPlatform," +
+                                        "profitAgent,profitDealer,profitOther1,profitOther2," +
+                                        "profitOther3,compensate,agentWaybillPrice,agentMarketingPrice) " +
+                                        "values ('1','"+ dtTd1.Rows[j]["merchantOrderId"].ToString() + "',now()," + price + "," 
+                                        + supplyPrice + "," + purchasePrice + "," + waybillPrice + "," + tax + ","
+                                        + platformPrice + "," + supplierAgentPrice + "," + purchaseAgentPrice + "," + profitPlatform + ","
+                                        + profitAgent + "," + profitDealer + "," + profitOther1 + "," + profitOther2 + ","
+                                        + profitOther3 + "," + compensate + "," + agentWaybillPrice + "," + agentMarketingPrice + ")";
+
+                                    b2bAL.Add(sql4);
+                                }
+                                string sql5 = "update t_order_list set  status='-1'  where merchantOrderId ='" + dtTd1.Rows[j]["merchantOrderId"].ToString() + "'";
+                                b2bAL.Add(sql5);
+                            }
+                        }
+
                     }
-                    else
-                    {
-                        //修改订单状态，并提醒运营处理 --等b2b退单功能上了以后再补、
-                    }
+                    string sql1 = "update ims_ewei_shop_order set virtual_info = '-1' where id =  '" + dt.Rows[i]["id"].ToString() + "'";
+                    bbcAL.Add(sql1);
                 }
             }
             #endregion
@@ -394,7 +441,7 @@ namespace core测试.Controllers
                             }
                             orderItem.tradeAmount = tradeAmount.ToString();
                             //处理运费(暂时只针对大连32库) -20190104韩
-                            if (kvp.Key.ToString() == "42"|| kvp.Key.ToString() == "43" || kvp.Key.ToString() == "57" || kvp.Key.ToString() == "58")
+                            if (kvp.Key.ToString() == "42" || kvp.Key.ToString() == "43" || kvp.Key.ToString() == "57" || kvp.Key.ToString() == "58")
                             {
 
                             }
@@ -682,7 +729,7 @@ namespace core测试.Controllers
                         }
                         else
                         {
-                           // msg.msg = "订单" + orderItem.merchantOrderId + "价格有误差，请查对！";
+                            // msg.msg = "订单" + orderItem.merchantOrderId + "价格有误差，请查对！";
                         }
                     }
                     //处理利润
@@ -697,7 +744,7 @@ namespace core测试.Controllers
                     double.TryParse(orderGoodsItem.dr["profitOther3"].ToString(), out profitOther3);
                     orderGoodsItem.profitPlatform = Math.Round(profit * profitPlatform / 100, 2);
                     orderGoodsItem.profitAgent = Math.Round(profit * profitAgent / 100, 2);
-                    if (orderItem.distribution!="")
+                    if (orderItem.distribution != "")
                     {
                         orderGoodsItem.profitDealer = Math.Round(profit * profitDealer / 100, 2);
                     }
@@ -707,11 +754,11 @@ namespace core测试.Controllers
                     double x = Math.Round(profit - orderGoodsItem.profitPlatform - orderGoodsItem.profitAgent
                                                     - orderGoodsItem.profitDealer - orderGoodsItem.profitOther1
                                                     - orderGoodsItem.profitOther2 - orderGoodsItem.profitOther3, 2);
-                    if (x!=0)
+                    if (x != 0)
                     {
                         orderGoodsItem.profitAgent = orderGoodsItem.profitAgent + x;
                     }
-                    
+
                     orderGoodsItem.other1Name = orderGoodsItem.dr["profitOther1Name"].ToString();
                     orderGoodsItem.other2Name = orderGoodsItem.dr["profitOther2Name"].ToString();
                     orderGoodsItem.other3Name = orderGoodsItem.dr["profitOther3Name"].ToString();
@@ -784,7 +831,7 @@ namespace core测试.Controllers
                         string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
                                       "values('" + kvp.Key + "'," +
                                       "'1'," +
-                                      "'','1','"+ kvp.Value + "')";
+                                      "'','1','" + kvp.Value + "')";
                         b2bAL.Add(sql2);
                     }
                     else
@@ -826,7 +873,7 @@ namespace core测试.Controllers
         /// <param name="virtualInfo">同步状态</param>
         /// <param name="flag">0失败，1成功</param>
         /// <param name="remark">错误信息</param>
-        private void insertBBCOrderLog(string ordersn,string status,string virtualInfo,string flag,string remark)
+        private void insertBBCOrderLog(string ordersn, string status, string virtualInfo, string flag, string remark)
         {
             IType itype = DatabaseOperationWeb.TYPE;
             B2BDBManager b2b = new B2BDBManager();
@@ -836,7 +883,7 @@ namespace core测试.Controllers
             DatabaseOperationWeb.ExecuteDML(sql);
             DatabaseOperationWeb.TYPE = itype;
         }
-         
+
         #region 旧代码
         private string initBBC(DataTable dt)
         {
@@ -913,7 +960,7 @@ namespace core测试.Controllers
                 OrderBean ob = new OrderBean("", "", dt.Rows[i]["ordersn"].ToString(), dt.Rows[i]["ordersn"].ToString(),
                     GetTime(dt.Rows[i]["createtime"].ToString()).ToString("yyyy-MM-dd HH:mm:ss"), Convert.ToDouble(dt.Rows[i]["price"].ToString()),
                    Convert.ToDouble(dt.Rows[i]["goodsprice"].ToString()), name, tel, "中国", pro, city, area, addr, zipcode, "1", cardnum, "", "",
-                   status, purchaserCode, distributionCode, "1", "", "BBC","0", null);
+                   status, purchaserCode, distributionCode, "1", "", "BBC", "0", null);
                 string sql1 = "select g.productsn,g.title,g.costprice,o.* " +
                               "from ims_ewei_shop_order_goods o ,ims_ewei_shop_goods g " +
                               "where o.goodsid =g.id and  o.orderid = " + dt.Rows[i]["id"].ToString();
@@ -1227,7 +1274,7 @@ namespace core测试.Controllers
         private string freight;
         private List<GoodsBean> goodsList;
 
-        public OrderBean(string id, string warehouseCode, string parentOrderId, string merchantOrderId, string tradeTime, double tradeAmount, double goodsTotalAmount, string consigneeName, string consigneeMobile, string addrCountry, string addrProvince, string addrCity, string addrDistrict, string addrDetail, string zipCode, string idType, string idNumber, string idFountImgUrl, string idBackImgUrl, string status, string purchaserCode, string distributionCode, string apitype, string fqID, string sendapi,string freight, List<GoodsBean> goodsList)
+        public OrderBean(string id, string warehouseCode, string parentOrderId, string merchantOrderId, string tradeTime, double tradeAmount, double goodsTotalAmount, string consigneeName, string consigneeMobile, string addrCountry, string addrProvince, string addrCity, string addrDistrict, string addrDetail, string zipCode, string idType, string idNumber, string idFountImgUrl, string idBackImgUrl, string status, string purchaserCode, string distributionCode, string apitype, string fqID, string sendapi, string freight, List<GoodsBean> goodsList)
         {
             this.id = id;
             this.warehouseCode = warehouseCode;
@@ -1376,7 +1423,8 @@ namespace core测试.Controllers
         public List<OrderGoodsItem> OrderGoods;//商品列表
     }
     public class OrderGoodsItem
-    { public string id;
+    {
+        public string id;
         public string slt;//商品图片
         public string barCode;//条码
         public double skuUnitPrice;//销售单价
