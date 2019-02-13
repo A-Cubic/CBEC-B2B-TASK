@@ -59,7 +59,7 @@ namespace core测试.Controllers
                 {
                     if (dt.Rows[i]["virtual_info"].ToString() == "")//未处理过
                     {
-                        string purchaserCode = "", distributionCode = "";
+                        string purchaserCode = "", distributionCode = "",openId = "";//代理账号，分销商账号，购买人openid
                         string userSql = "select id, usercode from t_user_list where uniacid ='" + dt.Rows[i]["uniacid"].ToString() + "'";
                         DataTable userDt = DatabaseOperationWeb.ExecuteSelectDS(userSql, "t_user_list").Tables[0];
                         if (userDt.Rows.Count > 0)//如果在b2b中有代理编号的才做处理
@@ -81,16 +81,17 @@ namespace core测试.Controllers
                             //}
                             if (dt.Rows[i]["openid"].ToString().IndexOf("sns_wa_") >= 0)//判断是否有openid
                             {
-                                string openid = dt.Rows[i]["openid"].ToString().Replace("sns_wa_", "");
+                                openId = dt.Rows[i]["openid"].ToString().Replace("sns_wa_", "");
                                 string dsql = "select u.* from t_wxapp_pagent_member m,t_user_list u " +
                                     "where m.supplierCode= u.usercode and u.usertype='4' " +
-                                    "and m.openId= '" + openid + "' " +
+                                    "and m.openId= '" + openId + "' " +
                                     "and m.purchasersCode= 'bbcagent@llwell.net'";
                                 DataTable dDt = DatabaseOperationWeb.ExecuteSelectDS(dsql, "t_user_list").Tables[0];
                                 if (dDt.Rows.Count > 0)
                                 {
                                     distributionCode = dDt.Rows[0]["usercode"].ToString();
                                 }
+                                 
                             }
                             string[] address = dt.Rows[i]["address"].ToString().Split(';');
                             string name = (address[7].Replace("\"", "").Split(':'))[2];
@@ -108,6 +109,7 @@ namespace core测试.Controllers
                             orderItem.addrCity = city;
                             orderItem.addrDistrict = area;
                             orderItem.addrDetail = addr;
+                            orderItem.openId = openId;
                             orderItem.distribution = distributionCode;
                             orderItem.consigneeCode = dt.Rows[i]["consigneeCode"].ToString();
                             orderItem.purchase = purchaserCode;
@@ -370,8 +372,14 @@ namespace core测试.Controllers
 
                 string error = "";
                 Dictionary<int, List<OrderGoodsItem>> myDictionary = new Dictionary<int, List<OrderGoodsItem>>();
+                bool ifRH = false;//用来判断是否有入会礼包
                 foreach (OrderGoodsItem orderGoodsItem in orderItem.OrderGoods)
                 {
+                    //判断是否是入会礼包
+                    if (orderGoodsItem.barCode== "BBC20190125001" || orderGoodsItem.barCode == "BBC20190125002" || orderGoodsItem.barCode == "BBC20190125003")
+                    {
+                        ifRH = true;
+                    }
                     string wsql = "select d.platformId,u.id as userId,u.platformCost,u.platformCostType,u.priceType,u.agentCost,u.usertype,u.ofAgent," +
                                   "d.pprice,d.profitPlatform,d.profitAgent,d.profitDealer,d.profitOther1," +
                                   "d.profitOther1Name,d.profitOther2,d.profitOther2Name,d.profitOther3," +
@@ -416,10 +424,15 @@ namespace core测试.Controllers
                     }
                     myDictionary[wid].Add(orderGoodsItem);
                 }
+
                 if (error != "")
                 {
                     errorDictionary[orderItem.merchantOrderId] += error;
                     continue;
+                }
+                if (ifRH)
+                {
+                    addDistribution(orderItem.openId);
                 }
                 if (myDictionary.Count() > 1)//一个订单有一个以上仓库和供应商的商品
                 {
@@ -854,6 +867,58 @@ namespace core测试.Controllers
                 }
             }
         }
+        
+        public void addDistribution(string openId)
+        {
+            BBCDBManager bbc = new BBCDBManager();
+            B2BDBManager b2b = new B2BDBManager();
+            try
+            {
+                string purchasersCode = "bbcagent@llwell.net";
+                string sql = "select * from t_user_list where openId='" + openId + "'";
+                DataTable dt = DatabaseOperationWeb.ExecuteSelectDS(sql, "TABLE").Tables[0];
+                if (dt.Rows.Count == 0)
+                {
+                    string sql2 = "select nextval('BBCAGENT')";
+                    DataTable dt2 = DatabaseOperationWeb.ExecuteSelectDS(sql2, "TABLE").Tables[0];
+                    string userCode = "BBC" + dt2.Rows[0][0].ToString();
+                    string userName = "分销商" + dt2.Rows[0][0].ToString();
+                    string insql = "insert into t_user_list(usercode,pwd,usertype,openId," +
+                        "username,createtime,verifycode,flag,ofAgent) " +
+                    "values('" + userCode + "','e10adc3949ba59abbe56e057f20f883e','4','" + openId + "'," +
+                    "'" + userName + "',now(),'4','1','" + purchasersCode + "')";
+                    if (DatabaseOperationWeb.ExecuteDML(insql))
+                    {
+                        string sql3 = "select id from t_user_list where usercode = '" + userCode + "'";
+                        DataTable dt3 = DatabaseOperationWeb.ExecuteSelectDS(sql3, "TABLE").Tables[0];
+                        if (dt3.Rows.Count > 0)
+                        {
+                            ArrayList al = new ArrayList();
+                            string insql1 = "insert into t_user_role(user_id,role_id) values(" + dt3.Rows[0][0].ToString() + ",9)";
+                            al.Add(insql1);
+                            string insql2 = "insert into t_wxapp_pagent(pagentCode,supplierCode,agentCode,flag) " +
+                                "values('" + openId + "','" + userCode + "','',9)";
+                            al.Add(insql2);
+                            string desql = "delete from t_wxapp_pagent_member where openId ='" + openId + "' ";
+                            al.Add(desql);
+                            DatabaseOperationWeb.ExecuteDML(al);
+
+                            string bbcSql = "update ims_ewei_shop_member set level=5 where openid_wa = '"+openId+"'";
+                            
+                            DatabaseOperationWeb.TYPE = bbc;
+                            DatabaseOperationWeb.ExecuteDML(bbcSql);
+                            DatabaseOperationWeb.TYPE = b2b;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                
+            }
+        }
+
+
         /// <summary>  
         /// 将c# DateTime时间格式转换为Unix时间戳格式  
         /// </summary>  
@@ -1378,6 +1443,7 @@ namespace core测试.Controllers
         public string keyId;//序号
         public string id;
         public string status;//状态
+        public string openId;//购买人的openid
         public string ifSend;//是否有发货按钮0没有1有
         public string warehouseId;//仓库id
         public string warehouseCode;//仓库code
