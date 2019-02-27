@@ -432,7 +432,7 @@ namespace core测试.Controllers
                 }
                 if (ifRH)
                 {
-                    addDistribution(orderItem.openId);
+                    addDistribution(orderItem.openId,orderItem.merchantOrderId);
                 }
                 if (myDictionary.Count() > 1)//一个订单有一个以上仓库和供应商的商品
                 {
@@ -868,7 +868,7 @@ namespace core测试.Controllers
             }
         }
         
-        public void addDistribution(string openId)
+        public void addDistribution(string openId,string merchantOrderId)
         {
             BBCDBManager bbc = new BBCDBManager();
             B2BDBManager b2b = new B2BDBManager();
@@ -901,6 +901,24 @@ namespace core测试.Controllers
                             al.Add(insql2);
                             string desql = "delete from t_wxapp_pagent_member where openId ='" + openId + "' ";
                             al.Add(desql);
+
+                            //新增拉一个分销商有30元佣金
+                            string yjsql1 = "select * from t_wxapp_pagent_invite where pagentCode= '" + openId + "'";
+                            DataTable dt4 = DatabaseOperationWeb.ExecuteSelectDS(yjsql1, "TABLE").Tables[0];
+                            if (dt4.Rows.Count>0)
+                            {
+                                string yjUserCode = dt4.Rows[0]["agentCode"].ToString();
+                                string yjPrice = dt4.Rows[0]["yjPrice"].ToString();
+                                if (yjPrice!="0")
+                                {
+                                    string yjsql = "insert into t_account_adjust(adjustCode,userCode,year,month,price,adjustType,detail,createtime) " +
+                                                   "values('TZ" + merchantOrderId + "','" + yjUserCode + "','" + DateTime.Now.Year + "'," +
+                                                   "'" + DateTime.Now.Month + "',"+yjPrice+ ",'21','推荐分销商佣金',now())";
+                                    al.Add(yjsql);
+                                }
+                            }
+
+                            
                             DatabaseOperationWeb.ExecuteDML(al);
 
                             string bbcSql = "update ims_ewei_shop_member set level=5 where openid_wa = '"+openId+"'";
