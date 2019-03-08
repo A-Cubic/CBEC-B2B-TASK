@@ -13,7 +13,7 @@ namespace core测试.Controllers
     public class BBCOrderJob : Job
     {
         // Begin 起始时间；Interval执行时间间隔，单位是毫秒，建议使用以下格式，此处为半小时；SkipWhileExecuting是否等待上一个执行完成，true为等待；
-        [Invoke(Begin = "2016-11-29 22:10", Interval = 1000000, SkipWhileExecuting = true)]
+        [Invoke(Begin = "2016-11-29 22:10", Interval = 1000, SkipWhileExecuting = true)]
         public void Run()
         {
             BBCDBManager bbc = new BBCDBManager();
@@ -21,7 +21,7 @@ namespace core测试.Controllers
             //处理bbc-->b2b
             string sql = "select  cast(o.paytype as SIGNED INTEGER) paytype1,m.id as consigneeCode,o.*  ,p.* " +
                 "from(select min(id) id, openid from ims_ewei_shop_member group by openid) m  ,ims_ewei_shop_order o " +
-                "left JOIN(select parentOrderId, GROUP_CONCAT(waybillno) waybillno from v_llwell_order  GROUP BY parentOrderId) p ON o.ordersn = p.parentorderid " +
+                "left JOIN(select parentOrderId, GROUP_CONCAT(waybillno) waybillno,max(status) as order_status from v_llwell_order  GROUP BY parentOrderId) p ON o.ordersn = p.parentorderid " +
                 "where o.openid = m.openid  and ((o.virtual_info is null and status !='-1')  or (o.virtual_info != o.`status` and  o.virtual_info != '-1')) and o.status!='0'   and o.id > 333";
             DataTable dt = DatabaseOperationWeb.ExecuteSelectDS(sql, "ims_ewei_shop_order").Tables[0];
             if (dt.Rows.Count > 0)
@@ -156,11 +156,11 @@ namespace core测试.Controllers
                             string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
                                           "values('" + dt.Rows[i]["ordersn"].ToString() + "'," +
                                           "'" + dt.Rows[i]["status"].ToString() + "'," +
-                                          "'" + dt.Rows[i]["virtual_info"].ToString() + "','0','没有对应代理账号')";
+                                          "'" + dt.Rows[i]["virtual_info"].ToString() + "->-1','0','没有对应代理账号')";
                             b2bAL.Add(sql2);
                         }
                     }
-                    else if (dt.Rows[i]["virtual_info"].ToString() == "0" && dt.Rows[i]["waybillno"].ToString() != "")
+                    else if (dt.Rows[i]["virtual_info"].ToString() == "0" && dt.Rows[i]["waybillno"].ToString().Replace(",","") != "" &&(dt.Rows[i]["order_status"].ToString() == "3"|| dt.Rows[i]["order_status"].ToString() == "4"|| dt.Rows[i]["order_status"].ToString() == "5"|| dt.Rows[i]["order_status"].ToString() == "6"))
                     {
                         string sjc = ConvertDateTimeToInt(DateTime.Now);
                         //如果状态是1并且运单号不为空；
@@ -170,7 +170,7 @@ namespace core测试.Controllers
                         string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
                                       "values('" + dt.Rows[i]["ordersn"].ToString() + "'," +
                                       "'" + dt.Rows[i]["status"].ToString() + "'," +
-                                      "'" + dt.Rows[i]["virtual_info"].ToString() + "','1','修改状态')";
+                                      "'" + dt.Rows[i]["virtual_info"].ToString() + "->2','1','修改状态')";
                         b2bAL.Add(sql2);
                         ////b2b推订单过来支付的情况，修改b2b订单状态
                         //string sql = "update t_order_list set " +
@@ -225,7 +225,7 @@ namespace core测试.Controllers
                         string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
                                       "values('" + dt.Rows[i]["ordersn"].ToString() + "'," +
                                       "'" + dt.Rows[i]["status"].ToString() + "'," +
-                                      "'" + dt.Rows[i]["virtual_info"].ToString() + "','1','修改状态')";
+                                      "'" + dt.Rows[i]["virtual_info"].ToString() + "->3','1','修改状态')";
                         b2bAL.Add(sql2);
                     }
                 }
@@ -852,7 +852,7 @@ namespace core测试.Controllers
                         string sql = "update ims_ewei_shop_order set virtual_info = '0' where ordersn =  '" + kvp.Key + "'";
                         bbcAL.Add(sql);
                         string sql2 = "insert into t_log_bbc_order(ordersn,status,virtual_info,flag,remark) " +
-                                      "values('" + kvp.Key + "','1','','1','')";
+                                      "values('" + kvp.Key + "','1','->0','1','')";
                         b2bAL.Add(sql2);
                     }
                 }
